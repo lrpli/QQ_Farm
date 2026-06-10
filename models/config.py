@@ -161,22 +161,6 @@ class PlantingConfig(BaseModel):
     planting_stable_timeout_seconds: float = 5.0  # 播种稳定超时
 
 
-class CrossInstancePartnerConfig(BaseModel):
-    """大小号通讯配对配置"""
-    instance_id: str = ""           # 目标实例ID
-    friend_name: str = ""           # 对应好友昵称（OCR识别用）
-    enabled: bool = True            # 是否启用该配对
-
-
-class CrossInstanceConfig(BaseModel):
-    """大小号通讯功能配置"""
-    enabled: bool = True                   # 总开关
-    send_alerts: bool = True               # 是否发送成熟通知
-    accept_steal: bool = False             # 是否接收偷菜任务
-    alert_threshold_seconds: int = 300     # 成熟阈值（默认5分钟）
-    partners: list[CrossInstancePartnerConfig] = Field(default_factory=list)
-
-
 class LandProfileConfig(BaseModel):
     level: int = 0
     gold: str = ""
@@ -203,7 +187,6 @@ class AppConfig(BaseModel):
     land: LandConfig = Field(default_factory=LandConfig)
     tasks: dict[str, TaskScheduleItemConfig] = Field(default_factory=dict)
     executor: ExecutorConfig = Field(default_factory=ExecutorConfig)
-    cross_instance: CrossInstanceConfig = Field(default_factory=CrossInstanceConfig)
 
     _config_path: str = ""
 

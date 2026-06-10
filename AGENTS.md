@@ -24,7 +24,6 @@ pyinstaller build.spec                # 构建 EXE
 ┌──────────────────────────────────────────────┐
 │  GUI (PyQt6) + Web (FastAPI, 可选)           │
 │  main_window.py / widgets/                   │
-│  InstanceSidebar (多实例切换)                 │
 ├──────────────────────────────────────────────┤
 │  策略层 (core/strategies/)                   │
 │  popup → harvest → maintain → plant →        │
@@ -40,19 +39,9 @@ pyinstaller build.spec                # 构建 EXE
 └──────────────────────────────────────────────┘
 ```
 
-### 多实例
-
-支持同时管理多个游戏窗口。每个实例有独立的 BotEngine、配置、日志、截图目录。
-
-- **InstanceManager** (`core/instance_manager.py`) — 管理元数据，存储在 `instances/profiles.json`
-- **InstanceSession** — 封装实例 id/name/state + 路径 + 配置
-- 实例目录: `instances/{id}/configs/config.json`, `instances/{id}/logs/`, `instances/{id}/screenshots/`
-- MainWindow 维护 `dict[str, BotEngine]` (`_engines`)
-- 无活动实例时回退到根目录 `config.json`（向后兼容）
-
 ### 主控编排 (core/bot_engine.py)
 
-- **BotEngine** (QObject) — 初始化各层组件，每个实例一个
+- **BotEngine** (QObject) — 初始化各层组件
 - **BotWorker** (QThread) — 执行 farm/friend/test_fertilize 任务
 - **TaskScheduler** (QTimer) — 定时触发，含窗口存活监控
 - **TaskExecutor** (`core/task_executor.py`) — 基于优先级的异步任务调度
@@ -113,7 +102,7 @@ FastAPI 控制面板：截图预览、启停控制、状态查看、日志、配
 
 Pydantic BaseModel 层级结构，`AppConfig.load(path)` / `.save()` 读写 JSON。GUI 修改实时生效。
 
-每个实例独立配置: `instances/{id}/configs/config.json`。根目录 `config.json` 为兼容默认。
+当前为单实例配置: 根目录 `config.json`。
 
 关键枚举: `PlantMode` (PREFERRED / BEST_EXP_RATE), `SellMode` (BATCH_ALL / SELECTIVE), `RunMode` (FOREGROUND / BACKGROUND)
 
@@ -130,7 +119,7 @@ Pydantic BaseModel 层级结构，`AppConfig.load(path)` / `.save()` 读写 JSON
 ## 添加新功能
 
 1. `core/strategies/` 新建策略，继承 `BaseStrategy`
-2. `core/bot_engine.py` — 创建实例 → 加入 `self._strategies` → 主循环中按优先级调用
+2. `core/bot_engine.py` — 创建策略实例 → 加入 `self._strategies` → 主循环中按优先级调用
 3. 新场景 → `scene_detector.py` 的 `Scene` 枚举 + `identify_scene()`
 4. 新模板类别 → `cv_detector.py` 的 `TEMPLATE_CATEGORIES`
 5. 对应 UI 面板 → `gui/widgets/`

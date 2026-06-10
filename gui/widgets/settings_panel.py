@@ -32,7 +32,7 @@ from qfluentwidgets import (
 
 from gui.styles import Colors
 from gui.widgets.fluent_container import StableElevatedCardWidget, TransparentCardContainer
-from models.config import AppConfig, PlantMode, RunMode, WindowPosition, CrossInstancePartnerConfig
+from models.config import AppConfig, PlantMode, RunMode, WindowPosition
 from models.game_data import CROPS, format_grow_time, get_best_crop_for_level, get_crop_names
 
 
@@ -267,42 +267,6 @@ class SettingsPanel(QWidget):
         self.logs_path_label.setStyleSheet("color: #64748b;")
         adv_form.addRow(self._field_label("日志路径", adv_card), self.logs_path_label)
 
-        # ── 大小号通讯卡片 ──
-        ci_card, ci_form = self._build_group_card(content, "大小号通讯", "settingsCrossInstanceCard")
-        layout.addWidget(ci_card)
-
-        self.ci_enabled = CheckBox("启用大小号通讯", ci_card)
-        ci_tip = CaptionLabel("当本实例地块即将成熟时，通知配对实例去偷菜。", ci_card)
-        ci_tip.setWordWrap(True)
-        ci_tip.setStyleSheet("color: #64748b;")
-        ci_form.addRow(self._field_label("总开关", ci_card), self.ci_enabled)
-        ci_form.addRow(self._field_label("", ci_card), ci_tip)
-
-        ci_opts_row = QWidget(ci_card)
-        ci_opts_layout = QHBoxLayout(ci_opts_row)
-        ci_opts_layout.setContentsMargins(0, 0, 0, 0)
-        ci_opts_layout.setSpacing(12)
-        self.ci_send = CheckBox("发送成熟通知", ci_opts_row)
-        self.ci_accept = CheckBox("接收偷菜任务", ci_opts_row)
-        ci_opts_layout.addWidget(self.ci_send)
-        ci_opts_layout.addWidget(self.ci_accept)
-        ci_opts_layout.addStretch()
-        ci_form.addRow(self._field_label("选项", ci_card), ci_opts_row)
-
-        self.ci_threshold = SpinBox(ci_card)
-        self.ci_threshold.setRange(30, 3600)
-        self.ci_threshold.setSingleStep(30)
-        self.ci_threshold.setSuffix(" 秒")
-        ci_form.addRow(self._field_label("通知阈值", ci_card), self.ci_threshold)
-
-        self.ci_partners = LineEdit(ci_card)
-        self.ci_partners.setPlaceholderText("格式: 实例ID:好友昵称, 实例ID:好友昵称")
-        ci_partners_tip = CaptionLabel("多个配对用逗号分隔，如: qq2:小号A, wx:大号B", ci_card)
-        ci_partners_tip.setWordWrap(True)
-        ci_partners_tip.setStyleSheet("color: #64748b;")
-        ci_form.addRow(self._field_label("配对列表", ci_card), self.ci_partners)
-        ci_form.addRow(self._field_label("", ci_card), ci_partners_tip)
-
         # ── 声明卡片 ──
         decl_card, decl_form = self._build_group_card(content, "声明", "settingsDeclCard")
         layout.addWidget(decl_card)
@@ -408,13 +372,6 @@ class SettingsPanel(QWidget):
         self.planting_stable.valueChanged.connect(self._auto_save)
         self.planting_stable_timeout.valueChanged.connect(self._auto_save)
         self.debug.toggled.connect(self._auto_save)
-        # 大小号通讯
-        self.ci_enabled.toggled.connect(self._auto_save)
-        self.ci_send.toggled.connect(self._auto_save)
-        self.ci_accept.toggled.connect(self._auto_save)
-        self.ci_threshold.valueChanged.connect(self._auto_save)
-        self.ci_partners.editingFinished.connect(self._auto_save)
-
     # ── 自动保存 ────────────────────────────────────────────
 
     def _auto_save(self):
@@ -456,13 +413,6 @@ class SettingsPanel(QWidget):
             c.screenshot.capture_interval_seconds = float(self.capture_interval.value())
             c.planting.planting_stable_seconds = float(self.planting_stable.value())
             c.planting.planting_stable_timeout_seconds = float(self.planting_stable_timeout.value())
-            # 大小号通讯
-            c.cross_instance.enabled = bool(self.ci_enabled.isChecked())
-            c.cross_instance.send_alerts = bool(self.ci_send.isChecked())
-            c.cross_instance.accept_steal = bool(self.ci_accept.isChecked())
-            c.cross_instance.alert_threshold_seconds = int(self.ci_threshold.value())
-            c.cross_instance.partners = self._parse_partners(str(self.ci_partners.text() or ""))
-
             c.save()
             self.config_changed.emit(c)
         finally:
@@ -674,12 +624,6 @@ class SettingsPanel(QWidget):
         self.planting_stable.setValue(float(c.planting.planting_stable_seconds))
         self.planting_stable_timeout.setValue(float(c.planting.planting_stable_timeout_seconds))
         self.debug.setChecked(bool(c.safety.debug_log_enabled))
-        # 大小号通讯
-        self.ci_enabled.setChecked(bool(c.cross_instance.enabled))
-        self.ci_send.setChecked(bool(c.cross_instance.send_alerts))
-        self.ci_accept.setChecked(bool(c.cross_instance.accept_steal))
-        self.ci_threshold.setValue(int(c.cross_instance.alert_threshold_seconds))
-        self.ci_partners.setText(self._format_partners(c.cross_instance.partners))
         # 日志路径
         cfg_path = str(getattr(c, "_config_path", "") or "").strip()
         if cfg_path:
@@ -691,39 +635,3 @@ class SettingsPanel(QWidget):
                     self.logs_path_label.setText(str(pathlib.Path("logs").resolve()))
             except Exception:
                 self.logs_path_label.setText(str(pathlib.Path("logs").resolve()))
-
-    # ── 大小号通讯配对解析 ────────────────────────────────────
-
-    @staticmethod
-    def _parse_partners(text: str) -> list:
-        """解析配对字符串 'id1:name1, id2:name2' → CrossInstancePartnerConfig 列表"""
-        partners = []
-        text = str(text or "").strip()
-        if not text:
-            return partners
-        for part in text.split(","):
-            part = part.strip()
-            if not part:
-                continue
-            if ":" in part:
-                iid, fname = part.split(":", 1)
-                iid = iid.strip()
-                fname = fname.strip()
-                if iid and fname:
-                    partners.append(CrossInstancePartnerConfig(
-                        instance_id=iid, friend_name=fname, enabled=True,
-                    ))
-        return partners
-
-    @staticmethod
-    def _format_partners(partners: list) -> str:
-        """将 CrossInstancePartnerConfig 列表格式化为 'id1:name1, id2:name2'"""
-        if not partners:
-            return ""
-        parts = []
-        for p in partners:
-            iid = getattr(p, "instance_id", "") or ""
-            fname = getattr(p, "friend_name", "") or ""
-            if iid and fname:
-                parts.append(f"{iid}:{fname}")
-        return ", ".join(parts)

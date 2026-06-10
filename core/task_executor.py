@@ -14,7 +14,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, time as dt_time, timedelta
-from typing import Callable, Any
+from typing import Callable
 
 from loguru import logger
 
@@ -183,8 +183,6 @@ class TaskExecutor:
         on_task_done: Callable[[str, TaskResult], None] | None = None,
         on_task_error: Callable[[str, str], None] | None = None,
         on_idle: Callable[[], None] | None = None,
-        cross_bus: Any = None,
-        instance_id: str = "",
     ):
         self._tasks = {t.name: t for t in tasks}
         self._runners = runners
@@ -195,10 +193,6 @@ class TaskExecutor:
         self._on_task_done = on_task_done
         self._on_task_error = on_task_error
         self._on_idle = on_idle
-
-        # 跨实例通讯
-        self._cross_bus = cross_bus
-        self._instance_id = instance_id
 
         # 线程控制
         self._lock = threading.RLock()
@@ -448,60 +442,6 @@ class TaskExecutor:
         except Exception as exc:
             logger.debug(f"snapshot hook error: {exc}")
 
-    # ── 跨实例偷菜任务注入 ──────────────────────────────────────
-
-    def _poll_and_inject_steal_tasks(self):
-        """轮询跨实例消息总线，将偷菜通知转化为高优先级任务"""
-        if not self._cross_bus or not self._instance_id:
-            return
-        try:
-            alerts = self._cross_bus.poll_alerts(self._instance_id)
-        except Exception:
-            return
-        if not alerts:
-            return
-
-        for alert in alerts:
-            task_name = f"steal_{alert.source_instance_id}"
-            logger.info(
-                f"[大小号通讯📥] 收到来自 [{alert.source_name}] 的偷菜通知: "
-                f"好友[{alert.friend_name}] | 地块: {','.join(alert.plot_ids)} | "
-                f"最近成熟: {alert.earliest_maturity_seconds}s"
-            )
-            with self._lock:
-                if task_name in self._tasks:
-                    # 已有偷菜任务，更新 features 中的 alert 数据
-                    task = self._tasks[task_name]
-                    task.features["friend_name"] = alert.friend_name
-                    task.features["source_name"] = alert.source_name
-                    task.next_run = datetime.now()
-                    task.enabled = True
-                    logger.info(f"[大小号通讯📥] 更新偷菜任务: {task_name} → 好友[{alert.friend_name}]")
-                else:
-                    # 动态创建偷菜任务
-                    steal_task = TaskItem(
-                        name=task_name,
-                        enabled=True,
-                        priority=5,  # 高于 main=10，仅次于 popup
-                        next_run=datetime.now(),
-                        success_interval=1800,  # 30分钟后可重试
-                        failure_interval=300,    # 失败5分钟后重试
-                        trigger=TaskTriggerType.INTERVAL.value,
-                        features={
-                            "friend_name": alert.friend_name,
-                            "source_name": alert.source_name,
-                        },
-                    )
-                    self._tasks[task_name] = steal_task
-                    # 注册 steal runner（优先使用 _run_task_steal，其次尝试 steal）
-                    if "steal" in self._runners and task_name not in self._runners:
-                        self._runners[task_name] = self._runners["steal"]
-                    logger.info(
-                        f"[大小号通讯📥] 注入偷菜任务: {task_name} → 好友[{alert.friend_name}] "
-                        f"(优先级=5)"
-                    )
-            self._wake_event.set()
-
     # ── 主循环（移植自 copilot） ──────────────────────────────
 
     def _loop(self):
@@ -516,9 +456,6 @@ class TaskExecutor:
                 else:
                     time.sleep(0.08)
                     continue
-
-                # 跨实例通讯：轮询偷菜通知并注入任务
-                self._poll_and_inject_steal_tasks()
 
                 now = datetime.now()
                 with self._lock:

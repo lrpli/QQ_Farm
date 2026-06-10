@@ -14,9 +14,7 @@
   P3  资源:     expand    — 扩建土地 + 领取任务
   P4  社交:     friend    — 好友巡查/帮忙/偷菜/同意好友
 """
-import os
 import re
-import sys
 import time
 import cv2
 import numpy as np
@@ -44,10 +42,9 @@ from tasks.land_scan import LandScanTask
 from core.strategies import (
     PopupStrategy, HarvestStrategy, MaintainStrategy,
     PlantStrategy, ExpandStrategy, FriendStrategy, TaskStrategy,
-    GiftStrategy, TargetedStealStrategy,
+    GiftStrategy,
 )
 from core.ui.navigator import Navigator
-from core.cross_instance_bus import CrossInstanceBus, StealAlert
 
 
 class BotWorker(QThread):
@@ -127,12 +124,10 @@ class BotEngine(QObject):
     _request_farm_check = pyqtSignal()
     config_updated = pyqtSignal(object)  # 配置更新信号，通知 GUI 刷新
 
-    def __init__(self, config: AppConfig, instance_id: str = 'default',
-                 cross_bus: CrossInstanceBus | None = None):
+    def __init__(self, config: AppConfig):
         super().__init__()
         self.config = config
-        self.instance_id = instance_id  # 实例 ID，用于日志和截图分离
-        self._cross_bus = cross_bus  # 跨实例消息总线
+        self.instance_id = "default"
         
         # 老板键状态
         self._game_hidden = False  # 游戏窗口是否已隐藏
@@ -153,10 +148,12 @@ class BotEngine(QObject):
         self.task = TaskStrategy(self.cv_detector)          # P3.5
         self.friend = FriendStrategy(self.cv_detector)      # P4
         self.gift = GiftStrategy(self.cv_detector)          # P5 礼品领取
-        self.targeted_steal = TargetedStealStrategy(self.cv_detector)  # 定点偷菜（大小号通讯）
         self._strategies = [self.popup, self.harvest, self.maintain,
-                            self.plant, self.expand, self.task, self.friend, self.gift,
-                            self.targeted_steal]
+                            self.plant, self.expand, self.task, self.friend, self.gift]
+        self._fast_scene_template_names = tuple(SCENE_TEMPLATES)
+        self._fast_strategy_template_names = tuple(dict.fromkeys(
+            SCENE_TEMPLATES + LAND_TEMPLATES + self._STRATEGY_EXTRA_TEMPLATES
+        ))
 
         # [4] 操作执行层
         self.action_executor: ActionExecutor | None = None
@@ -177,6 +174,7 @@ class BotEngine(QObject):
         # OCR 工具（延迟初始化）
         self._head_info_ocr = None
         self._land_scan_task: LandScanTask | None = None
+        self._last_screenshot_cleanup_at: float = 0.0
 
 
         self.scheduler.farm_check_triggered.connect(self._on_farm_check)
@@ -269,18 +267,15 @@ class BotEngine(QObject):
         if cv_image is None:
             return None, [], None
 
-        all_names = list(set(
-            SCENE_TEMPLATES + LAND_TEMPLATES + self._STRATEGY_EXTRA_TEMPLATES
-        ))
         detections = self.cv_detector.detect_targeted(
-            cv_image, all_names, scales=[1.0, 0.9, 1.1]
+            cv_image, self._fast_strategy_template_names, scales=[1.0, 0.9, 1.1]
         )
         return cv_image, detections, None
 
     def update_config(self, config: AppConfig):
         logger.info(
             f"⚙️ BotEngine[{self.instance_id}].update_config: config_id={id(config)} | "
-            f"auto_harvest={config.features.auto_harvest} | cross_instance.enabled={config.cross_instance.enabled}"
+            f"auto_harvest={config.features.auto_harvest}"
         )
         self.config = config
         self.plant.auto_buy_seed = config.features.auto_buy_seed
@@ -304,21 +299,6 @@ class BotEngine(QObject):
                 logger.info(f"策略选择: {best[0]} (经验效率 {best[4]/best[3]:.4f}/秒)")
                 return best[0]
         return planting.preferred_crop
-
-    def _setup_instance_dirs(self):
-        """初始化实例独立的目录（日志和截图）"""
-        if self.instance_id == 'default':
-            return  # 默认实例使用现有目录
-
-        # 创建实例独立的截图目录
-        screenshots_dir = f"screenshots/{self.instance_id}"
-        os.makedirs(screenshots_dir, exist_ok=True)
-
-        # 更新 screen_capture 的保存目录
-        if hasattr(self.screen_capture, '_save_dir'):
-            self.screen_capture._save_dir = screenshots_dir
-
-        logger.info(f"实例 {self.instance_id} 目录已初始化: screenshots/{self.instance_id}/")
 
     def toggle_game_window(self) -> dict:
         """老板键：切换游戏窗口显示/隐藏（异步执行，不阻塞 GUI）
@@ -401,9 +381,6 @@ class BotEngine(QObject):
         self._planted = False
         self._fertilized = False
         self._bot_stop_requested = False
-
-        # 初始化实例独立的目录（日志和截图）
-        self._setup_instance_dirs()
 
         self.cv_detector.load_templates()
         tpl_count = sum(len(v) for v in self.cv_detector._templates.values())
@@ -714,15 +691,14 @@ class BotEngine(QObject):
         """检查地块数据中的倒计时和播种需求，返回触发建议。
 
         Returns:
-            {"need_harvest": bool, "need_plant": bool, "alert_plots": list[dict]}
+            {"need_harvest": bool, "need_plant": bool}
         """
-        triggers = {"need_harvest": False, "need_plant": False, "alert_plots": []}
+        triggers = {"need_harvest": False, "need_plant": False}
         plots = self.config.land.plots
         if not isinstance(plots, list) or not plots:
             return triggers
 
-        ci_cfg = self.config.cross_instance
-        threshold = ci_cfg.alert_threshold_seconds if ci_cfg.enabled else 300
+        threshold = 300
 
         for plot in plots:
             if not isinstance(plot, dict):
@@ -736,12 +712,6 @@ class BotEngine(QObject):
                     total = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
                     if 0 < total <= threshold:
                         triggers["need_harvest"] = True
-                    # 跨实例通知：收集即将成熟的地块
-                    if 0 < total <= threshold and ci_cfg.enabled and ci_cfg.send_alerts:
-                        triggers["alert_plots"].append({
-                            "plot_id": plot.get("plot_id", ""),
-                            "maturity_seconds": total,
-                        })
                 except (ValueError, IndexError):
                     pass
 
@@ -778,10 +748,6 @@ class BotEngine(QObject):
         # 巡查完成后检查地块触发条件
         if success:
             triggers = self._check_land_triggers()
-            # 跨实例通知：广播即将成熟的地块
-            alert_plots = triggers.get("alert_plots", [])
-            if alert_plots:
-                self._broadcast_steal_alerts(alert_plots)
             if triggers["need_harvest"] or triggers["need_plant"]:
                 if self._async_executor and self._async_executor.is_task_enabled("main"):
                     logger.info("地块巡查后触发农场任务")
@@ -790,44 +756,6 @@ class BotEngine(QObject):
                     logger.debug("地块巡查: 检测到待处理地块，但 main 任务未启用，跳过触发")
 
         return TaskResult(success=bool(success))
-
-    def _broadcast_steal_alerts(self, alert_plots: list[dict]) -> None:
-        """向配置的伙伴实例广播即将成熟的偷菜通知"""
-        if not self._cross_bus:
-            return
-        ci_cfg = self.config.cross_instance
-        if not ci_cfg.enabled or not ci_cfg.send_alerts:
-            return
-        if not alert_plots:
-            return
-
-        plot_ids = [p["plot_id"] for p in alert_plots if p.get("plot_id")]
-        earliest = min(p.get("maturity_seconds", 300) for p in alert_plots)
-
-        instance_name = getattr(self, '_instance_display_name', None) or self.instance_id
-
-        logger.info(
-            f"[大小号通讯📤] [{instance_name}] 检测到 {len(plot_ids)} 个地块即将成熟，"
-            f"向 {len(ci_cfg.partners)} 个配对实例广播通知"
-        )
-
-        for partner in ci_cfg.partners:
-            if not partner.enabled or not partner.instance_id or not partner.friend_name:
-                continue
-            alert = StealAlert(
-                source_instance_id=self.instance_id,
-                source_name=instance_name,
-                friend_name=partner.friend_name,
-                target_instance_id=partner.instance_id,
-                plot_ids=plot_ids,
-                earliest_maturity_seconds=earliest,
-            )
-            logger.info(
-                f"[大小号通讯📤] 通知 [{partner.instance_id}]: "
-                f"好友[{partner.friend_name}] | 地块: {','.join(plot_ids)} | "
-                f"最近成熟: {earliest}s"
-            )
-            self._cross_bus.post_alert(alert)
 
     def _on_farm_finished(self, result: dict):
         """农场任务完成回调（BotWorker fallback 专用）"""
@@ -955,9 +883,9 @@ class BotEngine(QObject):
         if cv_image is None:
             return None, []
 
-        names = list(SCENE_TEMPLATES)
+        names = self._fast_scene_template_names
         if extra_names:
-            names.extend(extra_names)
+            names = tuple(dict.fromkeys([*names, *extra_names]))
 
         detections = self.cv_detector.detect_targeted(
             cv_image, names, scales=[1.0, 0.9, 1.1]
@@ -1284,7 +1212,10 @@ class BotEngine(QObject):
                 logger.info(f"已播种{crop_name}，{format_grow_time(grow_time)}后成熟，每{self.config.schedule.farm_check_seconds}秒检查维护")
 
         result["success"] = True
-        self.screen_capture.cleanup_old_screenshots(0)
+        now = time.time()
+        if now - self._last_screenshot_cleanup_at >= 120:
+            self.screen_capture.cleanup_old_screenshots(0)
+            self._last_screenshot_cleanup_at = now
         return result
 
     def _handle_remote_login(self, context: dict):
@@ -1484,70 +1415,6 @@ class BotEngine(QObject):
         return result
 
     # ============================================================
-    # 定点偷菜（大小号通讯）
-    # ============================================================
-
-    def _run_task_steal(self, ctx: TaskContext) -> TaskResult:
-        """定点偷菜任务：由跨实例通知触发
-
-        通过 TaskItem.features["friend_name"] 获取目标好友昵称。
-        任务名格式: steal_{source_instance_id}
-        """
-        # 从执行器内部任务字典获取 friend_name
-        friend_name = ""
-        source_name = ""
-        if self._async_executor:
-            with self._async_executor._lock:
-                task_item = self._async_executor._tasks.get(ctx.task_name)
-                if task_item:
-                    friend_name = task_item.features.get("friend_name", "")
-                    source_name = task_item.features.get("source_name", "")
-
-        if not friend_name:
-            return TaskResult(success=False, error="未指定好友昵称")
-
-        if is_silent_time(self.config.silent_hours):
-            remaining = get_silent_remaining_seconds(self.config.silent_hours)
-            return TaskResult(success=True, next_run_seconds=min(remaining, 300))
-
-        if self._bot_stop_requested:
-            return TaskResult(success=False, error="已停止")
-
-        ci_cfg = self.config.cross_instance
-        if not ci_cfg.enabled or not ci_cfg.accept_steal:
-            logger.warning(
-                f"[大小号通讯🎯] 配置检查失败: engine={self.instance_id} | "
-                f"config_id={id(self.config)} | enabled={ci_cfg.enabled} | accept_steal={ci_cfg.accept_steal}"
-            )
-            return TaskResult(success=False, error="未启用接收偷菜")
-
-        logger.info(
-            f"[大小号通讯🎯] 开始定点偷菜: [{source_name}] → 好友[{friend_name}]"
-        )
-        self.log_message.emit(f"[大小号通讯🎯] 定点偷菜: [{source_name}] → 好友[{friend_name}]")
-
-        rect = self._prepare_window()
-        if not rect:
-            return TaskResult(success=False, error="窗口未找到")
-
-        # 确保策略依赖已初始化
-        if not self.targeted_steal.action_executor:
-            self.targeted_steal.action_executor = self.action_executor
-        self.targeted_steal.set_capture_fn(self._fast_strategy_capture)
-        self.targeted_steal._stop_requested = False
-
-        result = self.targeted_steal.steal_from_friend(friend_name, rect)
-
-        if result["success"]:
-            logger.info(f"[大小号通讯🎯] 偷菜成功: [{source_name}] → 好友[{friend_name}]")
-            self.log_message.emit(f"[大小号通讯🎯] ✓ 偷菜成功: [{source_name}] → 好友[{friend_name}]")
-            return TaskResult(success=True)
-        else:
-            logger.warning(f"[大小号通讯🎯] 偷菜失败: [{source_name}] → 好友[{friend_name}] | {result['message']}")
-            self.log_message.emit(f"[大小号通讯🎯] ✗ 偷菜失败: [{source_name}] → 好友[{friend_name}] | {result['message']}")
-            return TaskResult(success=False, error=result["message"])
-
-    # ============================================================
     # 异步任务执行器管理
     # ============================================================
 
@@ -1568,8 +1435,6 @@ class BotEngine(QObject):
             on_snapshot=self._on_executor_snapshot,
             on_task_done=self._on_executor_task_done,
             on_task_error=self._on_executor_task_error,
-            cross_bus=self._cross_bus,
-            instance_id=self.instance_id,
         )
         self._async_executor.start()
         logger.info(f"异步执行器已启动: {len(tasks)} 个任务, {len(runners)} 个 runner")
