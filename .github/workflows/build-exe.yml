@@ -14,6 +14,14 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-exe-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXE_NAME: QQFarmBot.exe
+  DIST_DIR: dist
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -41,20 +49,37 @@ jobs:
       - name: Verify output
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist/QQFarmBot.exe")) {
-            throw "dist/QQFarmBot.exe not found"
+          if (-not (Test-Path "${{ env.DIST_DIR }}/${{ env.EXE_NAME }}")) {
+            throw "${{ env.DIST_DIR }}/${{ env.EXE_NAME }} not found"
           }
+          $hash = (Get-FileHash "${{ env.DIST_DIR }}/${{ env.EXE_NAME }}" -Algorithm SHA256).Hash.ToLower()
+          "sha256  $hash" | Out-File -FilePath "${{ env.DIST_DIR }}/QQFarmBot.sha256.txt" -Encoding ascii
+
+      - name: Package output
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "${{ github.sha }}".Substring(0, 7) }
+          $zipName = "QQFarmBot-$version-windows.zip"
+          Compress-Archive -Path "${{ env.DIST_DIR }}/${{ env.EXE_NAME }}","${{ env.DIST_DIR }}/QQFarmBot.sha256.txt" -DestinationPath "${{ env.DIST_DIR }}/$zipName" -Force
+          "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: QQFarmBot-windows
-          path: dist/QQFarmBot.exe
+          path: |
+            ${{ env.DIST_DIR }}/${{ env.EXE_NAME }}
+            ${{ env.DIST_DIR }}/QQFarmBot.sha256.txt
+            ${{ env.DIST_DIR }}/${{ env.ZIP_NAME }}
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload to GitHub Release (tag only)
+      - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/QQFarmBot.exe
+          files: |
+            ${{ env.DIST_DIR }}/${{ env.EXE_NAME }}
+            ${{ env.DIST_DIR }}/QQFarmBot.sha256.txt
+            ${{ env.DIST_DIR }}/${{ env.ZIP_NAME }}
+          fail_on_unmatched_files: true
