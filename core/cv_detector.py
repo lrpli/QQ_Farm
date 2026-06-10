@@ -334,24 +334,22 @@ class CVDetector:
         if not self._loaded:
             self.load_templates()
 
+        tpl = self._templates_by_name.get(name)
+        if tpl is None:
+            return []
+
         gray_screen = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-
-        for category, templates in self._templates.items():
-            for tpl in templates:
-                if tpl["name"] == name:
-                    results = self._match_template(
-                        screenshot, gray_screen, tpl, threshold
-                    )
-                    results = [r for r in results
-                               if not (r.confidence != r.confidence or
-                                       r.confidence == float('inf') or
-                                       r.confidence == float('-inf') or
-                                       r.confidence > 1.0)]
-                    results = self._nms(results, iou_threshold=0.5)
-
-                    results.sort(key=lambda r: r.confidence, reverse=True)
-                    return results
-        return []
+        results = self._match_template(
+            screenshot, gray_screen, tpl, threshold
+        )
+        results = [r for r in results
+                   if not (r.confidence != r.confidence or
+                           r.confidence == float('inf') or
+                           r.confidence == float('-inf') or
+                           r.confidence > 1.0)]
+        results = self._nms(results, iou_threshold=0.5)
+        results.sort(key=lambda r: r.confidence, reverse=True)
+        return results
 
     def detect_quick(self, screenshot: np.ndarray,
                      name: str,
@@ -386,7 +384,10 @@ class CVDetector:
             match_result = np.mean(confidences, axis=0)
         else:
             gray_screen = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-            gray_tpl = cv2.cvtColor(tpl_img, cv2.COLOR_BGR2GRAY)
+            gray_tpl = tpl.get("gray")
+            if gray_tpl is None:
+                gray_tpl = cv2.cvtColor(tpl_img, cv2.COLOR_BGR2GRAY)
+                tpl["gray"] = gray_tpl
             if tpl_mask is not None:
                 match_result = cv2.matchTemplate(gray_screen, gray_tpl, cv2.TM_CCOEFF_NORMED, mask=tpl_mask)
             else:
@@ -429,8 +430,8 @@ class CVDetector:
         if not names:
             return []
         
-        # 去重
-        name_set = set(names)
+        # 去重并保持顺序（便于调试）
+        name_set = dict.fromkeys(names)
         # 精简尺度：只试 3 个尺度而非 5 个
         fast_scales = scales or [1.0, 0.9, 1.1]
 
@@ -443,7 +444,7 @@ class CVDetector:
                 continue
             
             # 获取阈值
-            thresh = (thresholds.get(name, 0.8) if thresholds
+            thresh = (thresholds.get(name, self.get_template_threshold(name)) if thresholds
                       else self.get_template_threshold(name))
             
             # 检查是否有 ROI
@@ -466,7 +467,7 @@ class CVDetector:
             else:
                 # 全图匹配
                 tpl_matches = self._match_template_with_scales(
-                    screenshot, tpl, thresh, fast_scales
+                    screenshot, gray_screen, tpl, thresh, fast_scales
                 )
                 results.extend(tpl_matches)
 
@@ -546,7 +547,17 @@ class CVDetector:
                           posinf=-1.0, neginf=-1.0)
 
             locations = np.where(match_result >= threshold)
-            for pt_y, pt_x in zip(*locations):
+            max_hits = 64 if category == "land" else 8
+            if locations[0].size > max_hits:
+                scores = match_result[locations]
+                top_idx = np.argpartition(scores, -max_hits)[-max_hits:]
+                pt_ys = locations[0][top_idx]
+                pt_xs = locations[1][top_idx]
+            else:
+                pt_ys = locations[0]
+                pt_xs = locations[1]
+
+            for pt_y, pt_x in zip(pt_ys, pt_xs):
                 confidence = float(match_result[pt_y, pt_x])
                 # 坐标映射回全图
                 results.append(DetectResult(
@@ -566,13 +577,10 @@ class CVDetector:
 
     def _find_template(self, name: str) -> dict | None:
         """按名称查找模板数据"""
-        for templates in self._templates.values():
-            for tpl in templates:
-                if tpl["name"] == name:
-                    return tpl
-        return None
+        return self._templates_by_name.get(name)
 
     def _match_template_with_scales(self, screenshot: np.ndarray,
+                                     gray_screen: np.ndarray | None,
                                      tpl: dict,
                                      threshold: float,
                                      scales: list[float]) -> list[DetectResult]:
@@ -584,8 +592,8 @@ class CVDetector:
         th, tw = tpl_img.shape[:2]
         sh, sw = screenshot.shape[:2]
         category = tpl["category"]
-
-        gray_screen = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+        if gray_screen is None and category != "land":
+            gray_screen = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
 
         for scale in scales:
             new_w = int(tw * scale)
@@ -633,7 +641,17 @@ class CVDetector:
                           posinf=-1.0, neginf=-1.0)
 
             locations = np.where(match_result >= threshold)
-            for pt_y, pt_x in zip(*locations):
+            max_hits = 64 if category == "land" else 8
+            if locations[0].size > max_hits:
+                scores = match_result[locations]
+                top_idx = np.argpartition(scores, -max_hits)[-max_hits:]
+                pt_ys = locations[0][top_idx]
+                pt_xs = locations[1][top_idx]
+            else:
+                pt_ys = locations[0]
+                pt_xs = locations[1]
+
+            for pt_y, pt_x in zip(pt_ys, pt_xs):
                 confidence = float(match_result[pt_y, pt_x])
                 results.append(DetectResult(
                     name=tpl["name"],

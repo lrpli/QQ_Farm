@@ -97,7 +97,9 @@ class ActionExecutor:
         return ox, oy
 
     def _random_delay(self):
-        time.sleep(0.3)
+        delay_min = max(0.0, float(self._delay_min))
+        delay_max = max(delay_min, float(self._delay_max))
+        time.sleep(random.uniform(delay_min, delay_max))
 
     @staticmethod
     def _make_lparam(x: int, y: int) -> int:
