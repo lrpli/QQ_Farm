@@ -11,6 +11,7 @@ from PyQt6.QtCore import QObject, QEvent
 
 from models.config import AppConfig
 from gui.main_window import MainWindow
+from gui.styles import Colors
 from utils.logger import setup_logger
 from loguru import logger
 
@@ -91,25 +92,24 @@ def main():
     # 强制设置 Fusion 调色板为浅色，覆盖 Windows 暗色主题
     from PyQt6.QtGui import QPalette, QColor
     palette = QPalette()
-    palette.setColor(QPalette.ColorRole.Window, QColor("#f5f5f7"))
-    palette.setColor(QPalette.ColorRole.WindowText, QColor("#1d1d1f"))
-    palette.setColor(QPalette.ColorRole.Base, QColor("#f5f5f7"))
-    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#ffffff"))
-    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#ffffff"))
-    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#1d1d1f"))
-    palette.setColor(QPalette.ColorRole.Text, QColor("#1d1d1f"))
-    palette.setColor(QPalette.ColorRole.Button, QColor("#ffffff"))
-    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#1d1d1f"))
-    palette.setColor(QPalette.ColorRole.BrightText, QColor("#1d1d1f"))
-    palette.setColor(QPalette.ColorRole.Link, QColor("#007AFF"))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor("#007AFF"))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
-    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#aeaeb2"))
+    palette.setColor(QPalette.ColorRole.Window, QColor(Colors.WINDOW_BG))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(Colors.TEXT))
+    palette.setColor(QPalette.ColorRole.Base, QColor(Colors.WINDOW_BG))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(Colors.CARD_BG))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(Colors.CARD_BG))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor(Colors.TEXT))
+    palette.setColor(QPalette.ColorRole.Text, QColor(Colors.TEXT))
+    palette.setColor(QPalette.ColorRole.Button, QColor(Colors.CARD_BG))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(Colors.TEXT))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor(Colors.TEXT))
+    palette.setColor(QPalette.ColorRole.Link, QColor(Colors.PRIMARY))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(Colors.PRIMARY))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(Colors.TEXT_DIM))
     app.setPalette(palette)
 
     # 给所有 QDialog/QMessageBox/QInputDialog 设置浅色背景（覆盖系统暗色主题）
     from PyQt6.QtWidgets import QDialog
-    from gui.styles import Colors
     _dialog_css = f"""
         QDialog, QMessageBox, QInputDialog {{
             background-color: {Colors.CARD_BG}; color: {Colors.TEXT};
@@ -125,16 +125,16 @@ def main():
         }}
         QDialog QLineEdit, QInputDialog QLineEdit {{
             background-color: {Colors.WINDOW_BG}; color: {Colors.TEXT};
-            border: 1px solid rgba(0,0,0,25); border-radius: 6px;
+            border: 1px solid {Colors.BORDER}; border-radius: 6px;
             padding: 6px 10px;
         }}
         QDialog QPushButton, QMessageBox QPushButton, QInputDialog QPushButton {{
             background-color: {Colors.CARD_BG}; color: {Colors.TEXT};
-            border: 1px solid rgba(0,0,0,25); border-radius: 6px;
+            border: 1px solid {Colors.BORDER}; border-radius: 6px;
             padding: 6px 20px; min-width: 80px;
         }}
         QDialog QPushButton:hover, QMessageBox QPushButton:hover {{
-            background-color: rgba(0,0,0,6);
+            background-color: rgba(14, 165, 166, 10);
         }}
         QDialog QDialogButtonBox, QMessageBox QDialogButtonBox,
         QInputDialog QDialogButtonBox {{

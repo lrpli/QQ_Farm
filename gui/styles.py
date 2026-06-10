@@ -1,44 +1,50 @@
-"""主题样式常量 — Apple Settings 风格
+"""主题样式常量 — 清新青蓝风格
 
-配色参考 macOS Settings:
-  浅灰底 + 白色卡片 + 蓝色强调色
+目标：
+  轻盈底色 + 高对比文字 + 柔和青蓝强调色。
 """
 
 
 class Colors:
     # 背景
-    WINDOW_BG = "#f5f5f7"
-    CARD_BG = "#ffffff"
-    SIDEBAR_BG = "#f5f5f7"
-    SIDEBAR_ITEM_HOVER = "rgba(0, 0, 0, 6)"
-    SIDEBAR_ITEM_SELECTED = "#007AFF"
-    SIDEBAR_ITEM_SELECTED_BG = "rgba(0, 122, 255, 12)"
-    TITLEBAR_BG = "#f5f5f7"
-    INPUT_BG = "#ffffff"
-    INPUT_BG_FOCUS = "#ffffff"
+    WINDOW_BG = "#ECF8F4"
+    WINDOW_BG_ALT = "#F4FBFF"
+    CARD_BG = "#FFFFFF"
+    SIDEBAR_BG = "#E8F5F0"
+    SIDEBAR_ITEM_HOVER = "rgba(15, 118, 110, 10)"
+    SIDEBAR_ITEM_SELECTED = "#0F766E"
+    SIDEBAR_ITEM_SELECTED_BG = "rgba(15, 118, 110, 15)"
+    SIDEBAR_ITEM_SELECTED_HOVER = "rgba(15, 118, 110, 24)"
+    TITLEBAR_BG = "#E8F5F0"
+    INPUT_BG = "#FFFFFF"
+    INPUT_BG_FOCUS = "#FFFFFF"
 
     # 强调色
-    PRIMARY = "#007AFF"
-    PRIMARY_HOVER = "#0066D6"
-    SUCCESS = "#34C759"
-    WARNING = "#FF9500"
-    DANGER = "#FF3B30"
+    PRIMARY = "#0EA5A6"
+    PRIMARY_HOVER = "#0D9488"
+    SUCCESS = "#22C55E"
+    SUCCESS_HOVER = "#16A34A"
+    WARNING = "#F59E0B"
+    WARNING_HOVER = "#D97706"
+    DANGER = "#EF4444"
+    DANGER_HOVER = "#DC2626"
 
     # 文字
-    TEXT = "#1d1d1f"
-    TEXT_SECONDARY = "#86868b"
-    TEXT_DIM = "#aeaeb2"
+    TEXT = "#0F172A"
+    TEXT_SECONDARY = "#475569"
+    TEXT_DIM = "#94A3B8"
 
     # 边框
-    BORDER = "rgba(0, 0, 0, 12)"
-    BORDER_FOCUS = "rgba(0, 122, 255, 120)"
+    BORDER = "rgba(15, 23, 42, 16)"
+    BORDER_STRONG = "rgba(15, 23, 42, 24)"
+    BORDER_FOCUS = "rgba(13, 148, 136, 120)"
 
     # 滚动条
     SCROLLBAR_TRACK = "transparent"
-    SCROLLBAR_HANDLE = "rgba(0, 0, 0, 25)"
+    SCROLLBAR_HANDLE = "rgba(15, 23, 42, 24)"
 
     # 选中
-    SELECTION_BG = "rgba(0, 122, 255, 20)"
+    SELECTION_BG = "rgba(14, 165, 166, 20)"
 
 
 # ── 全局样式表 ────────────────────────────────────────────
@@ -51,7 +57,7 @@ QWidget {{
 }}
 
 QGroupBox {{
-    background-color: {Colors.CARD_BG};
+    background-color: rgba(255, 255, 255, 235);
     border: 1px solid {Colors.BORDER};
     border-radius: 10px;
     margin-top: 22px;
@@ -78,8 +84,9 @@ QCheckBox {{
     color: {Colors.TEXT};
 }}
 QCheckBox::indicator {{
-    width: 16px; height: 16px;
-    border: 1.5px solid rgba(0, 0, 0, 30);
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid rgba(15, 23, 42, 35);
     border-radius: 4px;
     background: {Colors.INPUT_BG};
 }}
@@ -103,37 +110,48 @@ QLineEdit:focus, QSpinBox:focus, QTimeEdit:focus, QComboBox:focus {{
 }}
 
 QSpinBox::up-button {{
-    subcontrol-position: top right; width: 20px;
-    border: none; background: transparent;
+    subcontrol-position: top right;
+    width: 20px;
+    border: none;
+    background: transparent;
     border-top-right-radius: 7px;
 }}
 QSpinBox::down-button {{
-    subcontrol-position: bottom right; width: 20px;
-    border: none; background: transparent;
+    subcontrol-position: bottom right;
+    width: 20px;
+    border: none;
+    background: transparent;
     border-bottom-right-radius: 7px;
 }}
 QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
-    background: rgba(0, 122, 255, 20);
+    background: rgba(14, 165, 166, 20);
 }}
 QSpinBox::up-arrow {{
-    image: url(gui/icons/arrow_up.svg); width: 10px; height: 6px;
+    image: url(gui/icons/arrow_up.svg);
+    width: 10px;
+    height: 6px;
 }}
 QSpinBox::down-arrow {{
-    image: url(gui/icons/arrow_down.svg); width: 10px; height: 6px;
+    image: url(gui/icons/arrow_down.svg);
+    width: 10px;
+    height: 6px;
 }}
 
 QComboBox::down-arrow {{
-    image: url(gui/icons/arrow_down.svg); width: 10px; height: 6px;
+    image: url(gui/icons/arrow_down.svg);
+    width: 10px;
+    height: 6px;
 }}
 QComboBox::drop-down {{
-    border: none; padding-right: 8px;
+    border: none;
+    padding-right: 8px;
 }}
 QComboBox QAbstractItemView {{
     background-color: {Colors.CARD_BG};
     color: {Colors.TEXT};
-    border: 1px solid rgba(0, 0, 0, 18);
+    border: 1px solid {Colors.BORDER_STRONG};
     border-radius: 10px;
-    selection-background-color: rgba(0, 122, 255, 12);
+    selection-background-color: rgba(14, 165, 166, 12);
     selection-color: {Colors.TEXT};
     outline: none;
     padding: 6px;
@@ -146,22 +164,26 @@ QComboBox QAbstractItemView::item {{
     margin: 2px 4px;
 }}
 QComboBox QAbstractItemView::item:hover {{
-    background-color: rgba(0, 122, 255, 8);
+    background-color: rgba(14, 165, 166, 10);
 }}
 QComboBox QAbstractItemView::item:selected {{
-    background-color: rgba(0, 122, 255, 12);
+    background-color: rgba(14, 165, 166, 14);
     color: {Colors.PRIMARY};
     font-weight: 600;
 }}
 
 QScrollBar:vertical {{
-    background: {Colors.SCROLLBAR_TRACK}; width: 6px; border-radius: 3px;
+    background: {Colors.SCROLLBAR_TRACK};
+    width: 6px;
+    border-radius: 3px;
 }}
 QScrollBar::handle:vertical {{
-    background: {Colors.SCROLLBAR_HANDLE}; border-radius: 3px; min-height: 30px;
+    background: {Colors.SCROLLBAR_HANDLE};
+    border-radius: 3px;
+    min-height: 30px;
 }}
 QScrollBar::handle:vertical:hover {{
-    background: rgba(0, 0, 0, 40);
+    background: rgba(15, 23, 42, 42);
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0;
@@ -193,7 +215,7 @@ QMessageBox QPushButton {{
     min-width: 80px;
 }}
 QMessageBox QPushButton:hover {{
-    background-color: rgba(0,0,0,6);
+    background-color: rgba(14, 165, 166, 8);
 }}
 QMessageBox QDialogButtonBox {{
     background-color: {Colors.CARD_BG};
@@ -210,57 +232,26 @@ QToolTip {{
     padding: 6px 10px;
     font-size: 12px;
 }}
-
-QComboBox QAbstractItemView {{
-    background-color: {Colors.CARD_BG};
-    color: {Colors.TEXT};
-    selection-background-color: rgba(0, 122, 255, 12);
-    selection-color: {Colors.TEXT};
-    border: none;
-    outline: none;
-    padding: 4px;
-}}
-
-QComboBox QAbstractItemView::item {{
-    min-height: 28px;
-    padding: 4px 8px;
-    border-radius: 4px;
-    margin: 2px;
-    background-color: {Colors.CARD_BG};
-    color: {Colors.TEXT};
-}}
-
-QComboBox QAbstractItemView::item:selected {{
-    background-color: rgba(0, 122, 255, 12);
-    color: {Colors.TEXT};
-}}
-
-QComboBox QAbstractItemView::item:hover {{
-    background-color: rgba(0, 122, 255, 8);
-}}
-
-/* 修复下拉提示框黑色背景问题 */
-QToolTip {{
-    background-color: {Colors.CARD_BG};
-    color: {Colors.TEXT};
-    border: 1px solid {Colors.BORDER};
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 11px;
-}}
 """
 
 
 def glass_button_style(color: str, hover: str) -> str:
     return f"""
         QPushButton {{
-            background-color: {color}; color: #FFFFFF; border: none;
-            border-radius: 8px; padding: 0 20px;
-            font-weight: 600; font-size: 13px;
+            background-color: {color};
+            color: #FFFFFF;
+            border: 1px solid rgba(255, 255, 255, 90);
+            border-radius: 10px;
+            padding: 0 20px;
+            font-weight: 600;
+            font-size: 13px;
         }}
-        QPushButton:hover {{ background-color: {hover}; }}
+        QPushButton:hover {{
+            background-color: {hover};
+        }}
         QPushButton:disabled {{
-            background-color: rgba(0, 0, 0, 10);
+            background-color: rgba(148, 163, 184, 45);
+            border: 1px solid rgba(148, 163, 184, 60);
             color: {Colors.TEXT_DIM};
         }}
     """
@@ -277,7 +268,8 @@ def ghost_button_style() -> str:
             border-radius: 6px;
         }}
         QPushButton:hover {{
-            background-color: rgba(0, 0, 0, 8);
+            background-color: rgba(14, 165, 166, 10);
+            border-color: rgba(14, 165, 166, 25);
             color: {Colors.TEXT};
         }}
     """

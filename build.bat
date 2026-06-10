@@ -9,10 +9,11 @@ echo.
 echo [1/3] Cleaning old build...
 rmdir /s /q build 2>nul
 rmdir /s /q dist\QQFarmBot 2>nul
+del /f /q dist\QQFarmBot.exe 2>nul
 
 :: Build
 echo [2/3] Building QQFarmBot...
-pyinstaller build.spec --clean --noconfirm
+python -m PyInstaller build.spec --clean --noconfirm
 
 if errorlevel 1 (
     echo.
@@ -24,19 +25,25 @@ if errorlevel 1 (
 :: Verify
 echo.
 echo [3/3] Verifying...
-if not exist "dist\QQFarmBot\QQFarmBot.exe" (
-    echo [ERROR] QQFarmBot.exe not found!
+if exist "dist\QQFarmBot.exe" (
+    for %%A in (dist\QQFarmBot.exe) do echo EXE: %%~zA bytes
+    echo [OK] Build complete! Output: dist\QQFarmBot.exe
+    echo.
     pause
-    exit /b 1
-)
-if not exist "dist\QQFarmBot\_internal\templates" (
-    echo [WARNING] templates directory missing!
+    exit /b 0
 )
 
-for %%A in (dist\QQFarmBot\QQFarmBot.exe) do echo EXE: %%~zA bytes
-echo Templates: %~dp0dist\QQFarmBot\_internal\templates
+if exist "dist\QQFarmBot\QQFarmBot.exe" (
+    for %%A in (dist\QQFarmBot\QQFarmBot.exe) do echo EXE: %%~zA bytes
+    if not exist "dist\QQFarmBot\_internal\templates" (
+        echo [WARNING] templates directory missing!
+    )
+    echo [OK] Build complete! Output: dist\QQFarmBot\
+    echo.
+    pause
+    exit /b 0
+)
 
-echo.
-echo [OK] Build complete! Output: dist\QQFarmBot\
+echo [ERROR] QQFarmBot.exe not found!
 echo.
 pause

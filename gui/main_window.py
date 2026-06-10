@@ -49,11 +49,17 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(GLASS_STYLESHEET)
 
         central = QWidget()
+        central.setObjectName("mainRoot")
         self.setCentralWidget(central)
         central.setStyleSheet(
             f"""
-            QWidget {{
-                background-color: {Colors.WINDOW_BG};
+            QWidget#mainRoot {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {Colors.WINDOW_BG},
+                    stop:0.55 {Colors.WINDOW_BG_ALT},
+                    stop:1 #F7FCFB
+                );
             }}
             """
         )
@@ -138,10 +144,10 @@ class MainWindow(QMainWindow):
         banner.setStyleSheet(
             f"""
             QLabel {{
-                background-color: rgba(0, 122, 255, 12);
-                color: {Colors.PRIMARY};
+                background-color: rgba(14, 165, 166, 12);
+                color: #0F766E;
                 font-size: 12px;
-                border-top: 1px solid rgba(0, 122, 255, 30);
+                border-top: 1px solid rgba(15, 118, 110, 28);
                 padding: 0 12px;
             }}
             """
@@ -203,9 +209,9 @@ class MainWindow(QMainWindow):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        self._btn_start = self._make_btn("开始", Colors.SUCCESS, "#15803d")
-        self._btn_pause = self._make_btn("暂停", Colors.WARNING, "#b45309")
-        self._btn_stop = self._make_btn("停止", Colors.DANGER, "#b91c1c")
+        self._btn_start = self._make_btn("开始", Colors.SUCCESS, Colors.SUCCESS_HOVER)
+        self._btn_pause = self._make_btn("暂停", Colors.WARNING, Colors.WARNING_HOVER)
+        self._btn_stop = self._make_btn("停止", Colors.DANGER, Colors.DANGER_HOVER)
 
         self._btn_pause.setEnabled(False)
         self._btn_stop.setEnabled(False)

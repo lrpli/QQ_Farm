@@ -51,7 +51,7 @@ class NavItem(QPushButton):
                     text-align: left;
                 }}
                 QPushButton:hover {{
-                    background-color: rgba(0, 122, 255, 18);
+                    background-color: {Colors.SIDEBAR_ITEM_SELECTED_HOVER};
                 }}
                 QLabel {{ color: {Colors.SIDEBAR_ITEM_SELECTED}; background: transparent; border: none; }}
             """)
