@@ -124,24 +124,6 @@ class GlobalSettingsPanel(QWidget):
         self.version_group.addSettingCards([self.version_card, self.update_card])
         root.addWidget(self.version_group)
 
-        # 开源声明
-        notice_group = SettingCardGroup("声明", self)
-        from qfluentwidgets import CaptionLabel
-        notice_label = CaptionLabel(
-            "本软件免费开源  |  GitHub: github.com/luckytiger12138/qq-farm  |  Gitee: gitee.com/luckytiger12138/qq-farm",
-            notice_group,
-        )
-        notice_label.setWordWrap(True)
-        notice_label.setStyleSheet("color: #dc2626; font-weight: 700;")
-        notice_card = SettingCard(
-            FluentIcon.INFO,
-            "免费开源声明",
-            "如果你花钱购买的，请立即退款！",
-            parent=notice_group,
-        )
-        notice_group.addSettingCards([notice_card])
-        root.addWidget(notice_group)
-
         root.addStretch()
 
         # 设置初始版本号

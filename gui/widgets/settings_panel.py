@@ -267,20 +267,6 @@ class SettingsPanel(QWidget):
         self.logs_path_label.setStyleSheet("color: #64748b;")
         adv_form.addRow(self._field_label("日志路径", adv_card), self.logs_path_label)
 
-        # ── 声明卡片 ──
-        decl_card, decl_form = self._build_group_card(content, "声明", "settingsDeclCard")
-        layout.addWidget(decl_card)
-
-        free_notice = CaptionLabel(
-            "本软件免费开源。如果你花钱购买的，请立即退款！ "
-            "GitHub: github.com/luckytiger12138/qq-farm | Gitee: gitee.com/luckytiger12138/qq-farm",
-            decl_card,
-        )
-        free_notice.setWordWrap(True)
-        free_notice.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        free_notice.setStyleSheet("color: #dc2626; font-weight: 700;")
-        decl_form.addRow(self._field_label("免责声明", decl_card), free_notice)
-
         layout.addStretch()
 
     # ── 通用卡片构建 ─────────────────────────────────────────

@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QFrame,
     QStackedWidget,
-    QMessageBox,
+    QTabWidget,
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap, QImage
@@ -29,6 +29,7 @@ from gui.widgets.land_detail_panel import LandDetailPanel
 from gui.widgets.task_panel import TaskPanel
 from gui.widgets.feature_panel import FeaturePanel
 from gui.widgets.global_settings_panel import GlobalSettingsPanel
+from gui.widgets.friend_block_panel import FriendBlockPanel
 from utils.logger import get_log_signal
 
 
@@ -36,7 +37,6 @@ class MainWindow(QMainWindow):
     def __init__(self, config: AppConfig):
         super().__init__()
         self.config = config
-        self._first_show = True
         self.engine = BotEngine(config)
         self._init_ui()
         self._connect_signals()
@@ -87,42 +87,46 @@ class MainWindow(QMainWindow):
         self._stack = QStackedWidget()
         self._stack.setStyleSheet("background: transparent; border: none;")
 
-        # 页面 0: 状态页
-        self._stack.addWidget(self._build_status_page())
-
-        # 页面 1: 地块详情页
+        # 运行控制子页面
+        self._status_page = self._build_status_page()
         self._land_panel = LandDetailPanel(self.config)
         self._land_panel.refresh_requested.connect(self._on_land_refresh_requested)
         self._land_panel.config_changed.connect(self._on_config_changed)
-        self._stack.addWidget(self._land_panel)
-
-        # 页面 2: 任务调度页
         self._task_panel = TaskPanel(self.config)
         self._task_panel.config_changed.connect(self._on_config_changed)
-        self._stack.addWidget(self._task_panel)
+        self._log_panel = LogPanel()
 
-        # 页面 3: 功能配置页
+        # 参数设置子页面
         self._feature_panel = FeaturePanel(self.config)
         self._feature_panel.config_changed.connect(self._on_config_changed)
-        self._stack.addWidget(self._feature_panel)
-
-        # 页面 4: 设置页
         self._settings_panel = SettingsPanel(self.config)
-        self._stack.addWidget(self._settings_panel)
-
-        # 页面 5: 模板管理页
         self._template_panel = TemplatePanel(self.engine.cv_detector)
         self._template_panel._get_window_keyword = self._get_active_window_keyword
         self._template_panel._get_window_select_rule = self._get_active_window_select_rule
-        self._stack.addWidget(self._template_panel)
-
-        # 页面 6: 全局设置页
         self._global_panel = GlobalSettingsPanel()
-        self._stack.addWidget(self._global_panel)
+        self._friend_block_panel = FriendBlockPanel(self.config)
+        self._friend_block_panel.config_changed.connect(self._on_config_changed)
 
-        # 页面 7: 日志页
-        self._log_panel = LogPanel()
-        self._stack.addWidget(self._log_panel)
+        # 页面 0: 运行控制
+        self._run_tabs = QTabWidget()
+        self._run_tabs.setDocumentMode(True)
+        self._run_tabs.addTab(self._status_page, "状态总览")
+        self._run_tabs.addTab(self._task_panel, "任务调度")
+        self._run_tabs.addTab(self._log_panel, "运行日志")
+        self._stack.addWidget(self._run_tabs)
+
+        # 页面 1: 参数设置
+        self._params_tabs = QTabWidget()
+        self._params_tabs.setDocumentMode(True)
+        self._params_tabs.addTab(self._settings_panel, "参数设置")
+        self._params_tabs.addTab(self._feature_panel, "功能配置")
+        self._params_tabs.addTab(self._land_panel, "地块详情")
+        self._params_tabs.addTab(self._template_panel, "模板管理")
+        self._params_tabs.addTab(self._global_panel, "全局设置")
+        self._stack.addWidget(self._params_tabs)
+
+        # 页面 2: 好友屏蔽
+        self._stack.addWidget(self._friend_block_panel)
 
         # 状态面板定时刷新（每秒）
         self._status_refresh_timer = QTimer(self)
@@ -132,27 +136,6 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self._stack)
         body.addWidget(content, 1)
         root.addLayout(body, 1)
-
-        # 底部开源横幅
-        banner = QLabel(
-            "本软件免费开源  |  如果你花钱购买的，请立即退款！  "
-            "GitHub: github.com/luckytiger12138/qq-farm  "
-            "Gitee: gitee.com/luckytiger12138/qq-farm"
-        )
-        banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        banner.setFixedHeight(28)
-        banner.setStyleSheet(
-            f"""
-            QLabel {{
-                background-color: rgba(14, 165, 166, 12);
-                color: #0F766E;
-                font-size: 12px;
-                border-top: 1px solid rgba(15, 118, 110, 28);
-                padding: 0 12px;
-            }}
-            """
-        )
-        root.addWidget(banner)
 
     def _build_status_page(self) -> QWidget:
         """构建状态页：截图预览 + 统计面板 + 控制按钮"""
@@ -251,14 +234,9 @@ class MainWindow(QMainWindow):
 
     def _on_navigation(self, key: str):
         page_map = {
-            "status": 0,
-            "land": 1,
-            "task": 2,
-            "feature": 3,
-            "settings": 4,
-            "template": 5,
-            "global": 6,
-            "logs": 7,
+            "run": 0,
+            "params": 1,
+            "friend_block": 2,
         }
         idx = page_map.get(key, 0)
         self._stack.setCurrentIndex(idx)
@@ -330,15 +308,24 @@ class MainWindow(QMainWindow):
 
     def _refresh_status(self):
         """定时刷新状态面板数据"""
-        idx = self._stack.currentIndex()
-        if idx == 0:
+        if self._stack.currentIndex() == 0 and self._run_tabs.currentWidget() is self._status_page:
             self._status_panel.update_stats(self.engine.scheduler.get_stats())
-        if idx == 2 and self.engine and self.engine._task_snapshots:
+        if (
+            self._stack.currentIndex() == 0
+            and self._run_tabs.currentWidget() is self._task_panel
+            and self.engine
+            and self.engine._task_snapshots
+        ):
             self._task_panel.refresh_snapshots(self.engine._task_snapshots)
 
     def _on_stats_for_task_panel(self, _stats):
         """stats_updated 信号触发时同步刷新任务调度面板"""
-        if self._stack.currentIndex() == 2 and self.engine and self.engine._task_snapshots:
+        if (
+            self._stack.currentIndex() == 0
+            and self._run_tabs.currentWidget() is self._task_panel
+            and self.engine
+            and self.engine._task_snapshots
+        ):
             self._task_panel.refresh_snapshots(self.engine._task_snapshots)
 
     def _on_config_changed(self, config: AppConfig):
@@ -356,6 +343,7 @@ class MainWindow(QMainWindow):
         self._land_panel.set_config(config)
         self._task_panel.set_config(config)
         self._feature_panel.set_config(config)
+        self._friend_block_panel.set_config(config)
 
     def _on_land_refresh_requested(self):
         """地块详情页「立即刷新」按钮：触发 OCR 识别个人信息"""
@@ -395,12 +383,6 @@ class MainWindow(QMainWindow):
                 logger.info("web_server.stop() 已调用")
             else:
                 logger.warning("self.web_server 为 None，无法停止 Web 服务")
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        if self._first_show:
-            self._first_show = False
-            QTimer.singleShot(300, self._show_opensource_notice)
 
     def closeEvent(self, event):
         self.unregister_hotkeys()
@@ -461,25 +443,6 @@ class MainWindow(QMainWindow):
             self.setWindowTitle("QQ Farm Vision Bot - 游戏已完美隐藏 | F11恢复")
         else:
             self.setWindowTitle("QQ Farm Vision Bot | F11老板键")
-
-    def _show_opensource_notice(self):
-        """启动时提醒用户本软件免费开源"""
-        msg = QMessageBox(self)
-        msg.setWindowTitle("免费开源声明")
-        msg.setIcon(QMessageBox.Icon.Information)
-        msg.setText(
-            "<h3 style='color:#007AFF;'>本软件完全免费开源！</h3>"
-            "<p style='font-size:14px;'>如果你花钱购买的，请立即退款！</p>"
-            "<p style='font-size:13px;'>"
-            "官方仓库（免费下载）：<br>"
-            "<b>GitHub</b>: github.com/luckytiger12138/qq-farm<br>"
-            "<b>Gitee</b>: gitee.com/luckytiger12138/qq-farm"
-            "</p>"
-            "<hr style='border:1px solid #ddd;'>"
-            "<p style='font-size:12px; color:#888;'>任何倒卖行为均违反开源协议，请勿上当受骗。</p>"
-        )
-        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-        msg.exec()
 
     # ── 模板面板回调 ───────────────────────────────────────
 

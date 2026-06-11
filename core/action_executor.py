@@ -18,8 +18,8 @@ MK_LBUTTON = 0x0001
 
 user32 = ctypes.windll.user32
 
-# 禁用 pyautogui 的安全暂停（我们自己控制延迟）
-pyautogui.PAUSE = 0.1
+# 全局默认暂停（实例初始化时会按运行模式覆写）
+pyautogui.PAUSE = 0.02
 pyautogui.FAILSAFE = True  # 鼠标移到左上角可紧急停止
 
 
@@ -38,6 +38,8 @@ class ActionExecutor:
         self._delay_min = delay_min
         self._delay_max = delay_max
         self._click_offset = click_offset
+        # 后台模式基本不依赖 pyautogui，关闭其隐式 PAUSE 降低额外等待
+        pyautogui.PAUSE = 0.0 if run_mode == RunMode.BACKGROUND else 0.02
         
         # ✅ 客户区相对于窗口左上角的偏移（用于坐标转换）
         self._client_offset_x = 0
@@ -146,7 +148,7 @@ class ActionExecutor:
     def _click_foreground(self, abs_x: int, abs_y: int) -> bool:
         """前台鼠标点击"""
         pyautogui.moveTo(int(abs_x), int(abs_y), duration=0.02)
-        time.sleep(0.05)
+        time.sleep(0.02)
         pyautogui.click(int(abs_x), int(abs_y))
         return True
 
@@ -519,7 +521,8 @@ class ActionExecutor:
             )
 
         success = self.click(abs_x, abs_y)
-        self._random_delay()
+        if success:
+            self._random_delay()
 
         return OperationResult(
             action=action, success=success,

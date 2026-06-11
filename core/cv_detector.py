@@ -78,6 +78,7 @@ class CVDetector:
         self._templates_dir = templates_dir
         self._templates: dict[str, list[dict]] = {}  # category -> [{name, image, mask}]
         self._templates_by_name: dict[str, dict] = {}  # name -> template dict（快速查找）
+        self._orb = cv2.ORB_create(nfeatures=500, fastThreshold=12)
         self._loaded = False
         self._disabled_names: set[str] = set()
         self._disabled_file = os.path.join(templates_dir, "disabled.json")
@@ -249,6 +250,7 @@ class CVDetector:
             if template.ndim == 2:
                 template = cv2.cvtColor(template, cv2.COLOR_GRAY2BGR)
             gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            orb_points, orb_des = self._extract_orb_features(gray, mask)
 
             if category not in self._templates:
                 self._templates[category] = []
@@ -259,6 +261,8 @@ class CVDetector:
                 "gray": gray,
                 "mask": mask,
                 "category": category,
+                "orb_points": orb_points,
+                "orb_des": orb_des,
             }
             self._templates[category].append(tpl_data)
             self._templates_by_name[name] = tpl_data  # 快速查找
@@ -329,7 +333,8 @@ class CVDetector:
 
     def detect_single_template(self, screenshot: np.ndarray,
                                 name: str,
-                                threshold: float = 0.7) -> list[DetectResult]:
+                                threshold: float = 0.7,
+                                enable_orb_fallback: bool = True) -> list[DetectResult]:
         """只检测指定名称的单个模板"""
         if not self._loaded:
             self.load_templates()
@@ -347,13 +352,18 @@ class CVDetector:
                            r.confidence == float('inf') or
                            r.confidence == float('-inf') or
                            r.confidence > 1.0)]
+        if not results and enable_orb_fallback:
+            orb_result = self._match_template_orb_fallback(screenshot, tpl)
+            if orb_result is not None:
+                results = [orb_result]
         results = self._nms(results, iou_threshold=0.5)
         results.sort(key=lambda r: r.confidence, reverse=True)
         return results
 
     def detect_quick(self, screenshot: np.ndarray,
                      name: str,
-                     threshold: float = 0.8) -> DetectResult | None:
+                     threshold: float = 0.8,
+                     enable_orb_fallback: bool = True) -> DetectResult | None:
         """极速检测：单模板 + 仅 scale 1.0，返回首个匹配或 None"""
         if not self._loaded:
             self.load_templates()
@@ -395,6 +405,8 @@ class CVDetector:
 
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(match_result)
         if max_val < threshold:
+            if enable_orb_fallback:
+                return self._match_template_orb_fallback(screenshot, tpl)
             return None
 
         return DetectResult(
@@ -411,7 +423,8 @@ class CVDetector:
                         names: list[str],
                         thresholds: dict[str, float] | None = None,
                         scales: list[float] | None = None,
-                        roi_map: dict[str, tuple[int, int, int, int]] | None = None) -> list[DetectResult]:
+                        roi_map: dict[str, tuple[int, int, int, int]] | None = None,
+                        enable_orb_fallback: bool = False) -> list[DetectResult]:
         """快速检测：只扫描指定模板名称，使用精简尺度集合
         
         Args:
@@ -479,7 +492,29 @@ class CVDetector:
                            r.confidence > 1.0)]
         
         # 按类别分组 NMS 去重
-        return self._nms_by_category(results, iou_threshold=0.3)
+        results = self._nms_by_category(results, iou_threshold=0.3)
+
+        # ORB 兜底：仅对未命中的关键模板执行，降低模板匹配在缩放/局部变形下的漏检
+        if enable_orb_fallback:
+            detected_names = {r.name for r in results}
+            fallback_names = [
+                name for name in name_set
+                if name not in detected_names and self._is_orb_candidate(name)
+            ]
+            if fallback_names:
+                screen_points, screen_des = self._extract_orb_features(gray_screen, None)
+                for name in fallback_names:
+                    tpl = self._templates_by_name.get(name)
+                    if tpl is None:
+                        continue
+                    orb_result = self._match_template_orb_fallback(
+                        screenshot, tpl, screen_points=screen_points, screen_des=screen_des
+                    )
+                    if orb_result is not None:
+                        results.append(orb_result)
+                results = self._nms_by_category(results, iou_threshold=0.3)
+
+        return results
 
     def _match_template_with_scales_roi(self, roi_img, roi_gray, tpl, threshold, scales, offset):
         """在 ROI 区域内进行模板匹配，返回相对于全图的坐标
@@ -578,6 +613,101 @@ class CVDetector:
     def _find_template(self, name: str) -> dict | None:
         """按名称查找模板数据"""
         return self._templates_by_name.get(name)
+
+    def _extract_orb_features(self, gray: np.ndarray,
+                              mask: np.ndarray | None) -> tuple[np.ndarray, np.ndarray | None]:
+        """提取 ORB 特征点与描述子，缓存到模板，避免重复计算。"""
+        try:
+            kp, des = self._orb.detectAndCompute(gray, mask)
+        except cv2.error:
+            return np.empty((0, 2), dtype=np.float32), None
+        if not kp or des is None:
+            return np.empty((0, 2), dtype=np.float32), None
+        points = np.array([k.pt for k in kp], dtype=np.float32)
+        return points, des
+
+    @staticmethod
+    def _is_orb_candidate(name: str) -> bool:
+        """仅对较关键且易受缩放/动画影响的模板启用 ORB 兜底。"""
+        return name.startswith(("btn_", "bth_", "ui_", "friend_"))
+
+    def _match_template_orb_fallback(self, screenshot: np.ndarray,
+                                     tpl: dict,
+                                     screen_points: np.ndarray | None = None,
+                                     screen_des: np.ndarray | None = None) -> DetectResult | None:
+        """当模板匹配失败时，用 ORB + 单应性估计做兜底定位。"""
+        if not self._is_orb_candidate(tpl["name"]):
+            return None
+
+        tpl_points = tpl.get("orb_points")
+        tpl_des = tpl.get("orb_des")
+        if tpl_des is None or tpl_points is None or len(tpl_points) < 8:
+            return None
+
+        if screen_points is None or screen_des is None:
+            gray_screen = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
+            screen_points, screen_des = self._extract_orb_features(gray_screen, None)
+        if screen_des is None or len(screen_points) < 8:
+            return None
+
+        matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+        knn = matcher.knnMatch(tpl_des, screen_des, k=2)
+        good = []
+        for pair in knn:
+            if len(pair) != 2:
+                continue
+            m, n = pair
+            if m.distance < 0.75 * n.distance:
+                good.append(m)
+
+        if len(good) < 10:
+            return None
+
+        dst_points = np.array([screen_points[m.trainIdx] for m in good], dtype=np.float32)
+        src_points = np.array([tpl_points[m.queryIdx] for m in good], dtype=np.float32)
+
+        h_mat, inlier_mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 3.0)
+        if h_mat is None or inlier_mask is None:
+            return None
+
+        inliers = int(inlier_mask.ravel().sum())
+        if inliers < 8:
+            return None
+
+        tpl_h, tpl_w = tpl["image"].shape[:2]
+        corners = np.array(
+            [[[0, 0]], [[tpl_w - 1, 0]], [[tpl_w - 1, tpl_h - 1]], [[0, tpl_h - 1]]],
+            dtype=np.float32,
+        )
+        projected = cv2.perspectiveTransform(corners, h_mat).reshape(-1, 2)
+        xs = projected[:, 0]
+        ys = projected[:, 1]
+        x1, y1 = int(np.floor(xs.min())), int(np.floor(ys.min()))
+        x2, y2 = int(np.ceil(xs.max())), int(np.ceil(ys.max()))
+
+        sh, sw = screenshot.shape[:2]
+        x1 = max(0, min(x1, sw - 1))
+        y1 = max(0, min(y1, sh - 1))
+        x2 = max(x1 + 1, min(x2, sw))
+        y2 = max(y1 + 1, min(y2, sh))
+
+        w = x2 - x1
+        h = y2 - y1
+        if w < 8 or h < 8:
+            return None
+
+        # inlier 比例映射为 0.7~0.99 置信度，便于与模板匹配结果共存排序
+        confidence = 0.7 + 0.29 * min(1.0, inliers / max(12.0, len(good)))
+        return DetectResult(
+            name=tpl["name"],
+            category=tpl["category"],
+            x=x1 + w // 2,
+            y=y1 + h // 2,
+            w=w,
+            h=h,
+            confidence=float(confidence),
+            extra={"matcher": "orb", "inliers": inliers, "matches": len(good)},
+        )
 
     def _match_template_with_scales(self, screenshot: np.ndarray,
                                      gray_screen: np.ndarray | None,

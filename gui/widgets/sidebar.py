@@ -76,14 +76,9 @@ class Sidebar(QWidget):
     navigation_changed = pyqtSignal(str)
 
     PAGE_DEF = [
-        ("gui/icons/nav_status.svg", "状态总览", "status"),
-        ("gui/icons/nav_land.svg", "地块详情", "land"),
-        ("gui/icons/nav_task.svg", "任务调度", "task"),
-        ("gui/icons/nav_task.svg", "功能配置", "feature"),
-        ("gui/icons/nav_settings.svg", "参数设置", "settings"),
-        ("gui/icons/nav_template.svg", "模板管理", "template"),
-        ("gui/icons/nav_settings.svg", "全局设置", "global"),
-        ("gui/icons/nav_logs.svg", "运行日志", "logs"),
+        ("gui/icons/nav_status.svg", "运行控制", "run"),
+        ("gui/icons/nav_settings.svg", "参数设置", "params"),
+        ("gui/icons/nav_task.svg", "好友屏蔽", "friend_block"),
     ]
 
     def __init__(self, parent=None):
